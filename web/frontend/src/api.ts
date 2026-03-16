@@ -397,7 +397,7 @@ export interface UpdateInfo {
 }
 
 export const updates = {
-  check: (): Promise<UpdateInfo> => get('/update/check'),
+  check: (): Promise<UpdateInfo> => request('/update/check'),
   apply: (downloadUrl: string): Promise<{ status: string; message: string }> =>
-    post('/update/apply', { download_url: downloadUrl }),
+    request('/update/apply', { method: 'POST', body: JSON.stringify({ download_url: downloadUrl }) }),
 };
