@@ -246,6 +246,11 @@ func extractAndReplace(zipPath, exeDir, exeName, exePath string) error {
 	oldExePath := exePath + ".old"
 	os.Remove(oldExePath) // remove previous .old if exists
 
+	// Remove Mark of the Web from extracted exe so SmartScreen won't trigger.
+	// Files created by the app itself don't normally get MOTW, but if the
+	// source zip was downloaded via browser it may propagate.
+	removeMarkOfTheWeb(newExePath)
+
 	if runtime.GOOS == "windows" {
 		// On Windows, rename running exe to .old (Windows allows this)
 		if err := os.Rename(exePath, oldExePath); err != nil {
@@ -257,6 +262,7 @@ func extractAndReplace(zipPath, exeDir, exeName, exePath string) error {
 			os.Rename(oldExePath, exePath)
 			return fmt.Errorf("rename new exe: %w", err)
 		}
+		removeMarkOfTheWeb(exePath)
 	} else {
 		// On Unix, we can overwrite in-place
 		if err := os.Rename(newExePath, exePath); err != nil {
@@ -265,6 +271,55 @@ func extractAndReplace(zipPath, exeDir, exeName, exePath string) error {
 	}
 
 	return nil
+}
+
+// ApplyFromFile applies an update from a local zip file (USB/network share).
+// Same as ApplyUpdate but reads from filesystem instead of downloading.
+func ApplyFromFile(zipPath string) error {
+	exePath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("get executable path: %w", err)
+	}
+	exePath, err = filepath.EvalSymlinks(exePath)
+	if err != nil {
+		return fmt.Errorf("resolve symlinks: %w", err)
+	}
+
+	exeDir := filepath.Dir(exePath)
+	exeName := filepath.Base(exePath)
+
+	return extractAndReplace(zipPath, exeDir, exeName, exePath)
+}
+
+// ApplyFromReader applies an update from an io.Reader (e.g. multipart upload).
+// Writes to a temp file first, then extracts.
+func ApplyFromReader(r io.Reader) error {
+	exePath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("get executable path: %w", err)
+	}
+	exePath, err = filepath.EvalSymlinks(exePath)
+	if err != nil {
+		return fmt.Errorf("resolve symlinks: %w", err)
+	}
+
+	exeDir := filepath.Dir(exePath)
+	exeName := filepath.Base(exePath)
+
+	tmpFile, err := os.CreateTemp(exeDir, "existora-update-*.zip")
+	if err != nil {
+		return fmt.Errorf("create temp file: %w", err)
+	}
+	tmpPath := tmpFile.Name()
+	defer os.Remove(tmpPath)
+
+	if _, err := io.Copy(tmpFile, r); err != nil {
+		tmpFile.Close()
+		return fmt.Errorf("write upload: %w", err)
+	}
+	tmpFile.Close()
+
+	return extractAndReplace(tmpPath, exeDir, exeName, exePath)
 }
 
 func extractFile(f *zip.File, destPath string) error {
@@ -281,6 +336,9 @@ func extractFile(f *zip.File, destPath string) error {
 	defer out.Close()
 
 	_, err = io.Copy(out, rc)
+	if err == nil {
+		removeMarkOfTheWeb(destPath)
+	}
 	return err
 }
 

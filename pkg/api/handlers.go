@@ -2660,6 +2660,37 @@ func (h *Handlers) ApplyUpdate(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// ApplyLocalUpdate handles offline update from a zip file upload.
+func (h *Handlers) ApplyLocalUpdate(w http.ResponseWriter, r *http.Request) {
+	// Limit upload to 200MB
+	r.Body = http.MaxBytesReader(w, r.Body, 200<<20)
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "file upload required: " + err.Error()})
+		return
+	}
+	defer file.Close()
+
+	if !strings.HasSuffix(strings.ToLower(header.Filename), ".zip") {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "only .zip files are supported"})
+		return
+	}
+
+	h.logger.Info("applying offline update", "filename", header.Filename, "size", header.Size)
+
+	if err := updater.ApplyFromReader(file); err != nil {
+		h.logger.Error("offline update failed", "error", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{
+		"status":  "updated",
+		"message": "Update applied. Please restart the application.",
+	})
+}
+
 // Ensure unused imports are accounted for at compile time.
 var (
 	_ = sql.ErrNoRows

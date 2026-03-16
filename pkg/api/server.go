@@ -166,6 +166,7 @@ func (s *Server) buildRouter(corsOrigins string) chi.Router {
 		// Update
 		r.Get("/update/check", s.handlers.CheckUpdate)
 		r.Post("/update/apply", s.handlers.ApplyUpdate)
+		r.Post("/update/apply-local", s.handlers.ApplyLocalUpdate)
 	})
 
 	// Health check
@@ -235,6 +236,7 @@ func (s *Server) APIHandler() http.Handler {
 		// Update
 		r.Get("/update/check", s.handlers.CheckUpdate)
 		r.Post("/update/apply", s.handlers.ApplyUpdate)
+		r.Post("/update/apply-local", s.handlers.ApplyLocalUpdate)
 	})
 	r.Get("/api/health", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "version": s.config.Version})

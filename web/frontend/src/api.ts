@@ -400,4 +400,14 @@ export const updates = {
   check: (): Promise<UpdateInfo> => request('/update/check'),
   apply: (downloadUrl: string): Promise<{ status: string; message: string }> =>
     request('/update/apply', { method: 'POST', body: JSON.stringify({ download_url: downloadUrl }) }),
+  applyLocal: async (file: File): Promise<{ status: string; message: string }> => {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch(`${BASE}/update/apply-local`, { method: 'POST', body: form });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      throw new Error(err.error || res.statusText);
+    }
+    return res.json();
+  },
 };

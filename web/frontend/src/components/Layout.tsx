@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useParams, useLocation } from 'react-router-dom';
-import { Database, FolderOpen, Play, CheckCircle, Code, LayoutDashboard, ListChecks, Eye, Lightbulb, Download, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { Database, FolderOpen, Play, CheckCircle, Code, LayoutDashboard, ListChecks, Eye, Lightbulb, Download, Upload, X } from 'lucide-react';
+import { useEffect, useState, useRef } from 'react';
 import { updates, UpdateInfo } from '../api';
 
 export function Layout() {
@@ -11,11 +11,25 @@ export function Layout() {
   const [updating, setUpdating] = useState(false);
   const [updateMsg, setUpdateMsg] = useState('');
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     updates.check().then(info => {
       if (info.available) setUpdateInfo(info);
     }).catch(() => {});
   }, []);
+
+  const handleFileUpdate = async (file: File) => {
+    setUpdating(true);
+    setUpdateMsg('Güncelleniyor...');
+    try {
+      const res = await updates.applyLocal(file);
+      setUpdateMsg(res.message || 'Güncelleme tamamlandı. Uygulamayı yeniden başlatın.');
+    } catch (e: unknown) {
+      setUpdateMsg('Hata: ' + (e as Error).message);
+      setUpdating(false);
+    }
+  };
 
   const isActive = (path: string) => location.pathname === path;
 
@@ -77,6 +91,39 @@ export function Layout() {
             </>
           )}
         </nav>
+        <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border)', marginTop: 'auto' }}>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".zip"
+            style={{ display: 'none' }}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) handleFileUpdate(file);
+              e.target.value = '';
+            }}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={updating}
+            style={{
+              width: '100%',
+              padding: '8px 12px',
+              background: 'var(--bg-secondary)',
+              color: 'var(--text-secondary)',
+              border: '1px solid var(--border)',
+              borderRadius: 6,
+              cursor: updating ? 'not-allowed' : 'pointer',
+              fontSize: 12,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            <Upload size={13} />
+            {updating ? updateMsg || 'Güncelleniyor...' : 'Dosyadan Güncelle'}
+          </button>
+        </div>
       </aside>
       <main className="main-content">
         {updateInfo && !updateDismissed && (
