@@ -1,6 +1,7 @@
 # Binaries
 bin/
 *.exe
+!cmd/desktop/resources/*.exe
 *.syso
 /desktop
 /existora-desktop
