@@ -74,7 +74,8 @@ jobs:
         run: |
           cd web/frontend
           $env:WAILS_BUILD = "1"
-          npm run build:wails
+          npx tsc -b
+          npx vite build
 
       - name: Generate Windows version info
         shell: powershell
