@@ -1,0 +1,25 @@
+//go:build windows
+
+package main
+
+import (
+	"os"
+	"os/exec"
+)
+
+func execve(path string, args []string, env []string) error {
+	cmd := exec.Command(path, args[1:]...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Env = env
+	err := cmd.Run()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			os.Exit(exitErr.ExitCode())
+		}
+		return err
+	}
+	os.Exit(0)
+	return nil
+}

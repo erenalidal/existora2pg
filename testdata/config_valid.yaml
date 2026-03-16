@@ -1,0 +1,19 @@
+oracle:
+  dsn: "oracle://migtest:migtest123@localhost:1521/FREEPDB1"
+  schema: "MIGTEST"
+  max_conns: 4
+
+postgres:
+  dsn: "postgres://migtest:migtest123@localhost:5434/migtest?sslmode=disable"
+  schema: "public"
+  max_conns: 4
+
+migration:
+  workers: 2
+  batch_size: 1000
+  state_db_path: "./test_state.db"
+  validate_after: true
+
+logging:
+  level: "debug"
+  format: "text"

@@ -1,0 +1,13 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "existora2pg",
+  "outputfilename": "existora2pg-desktop",
+  "frontend:install": "npm install",
+  "frontend:build": "npm run build:wails",
+  "frontend:dev:watcher": "npm run dev:wails",
+  "frontend:dev:serverUrl": "auto",
+  "wailsjsdir": "./web/frontend",
+  "author": {
+    "name": "erenalidal"
+  }
+}

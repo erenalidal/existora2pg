@@ -1,0 +1,40 @@
+services:
+  oracle:
+    image: gvenzl/oracle-free:23-slim-faststart
+    container_name: existora2pg-oracle
+    ports:
+      - "1521:1521"
+    environment:
+      ORACLE_PASSWORD: testpass123
+      APP_USER: migtest
+      APP_USER_PASSWORD: migtest123
+    volumes:
+      - oracle-data:/opt/oracle/oradata
+      - ./testdata/oracle-init:/container-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD", "healthcheck.sh"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: existora2pg-postgres
+    ports:
+      - "5434:5432"
+    environment:
+      POSTGRES_USER: migtest
+      POSTGRES_PASSWORD: migtest123
+      POSTGRES_DB: migtest
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+      - ./testdata/pg-init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U migtest"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  oracle-data:
+  pg-data:

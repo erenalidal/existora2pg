@@ -1,0 +1,46 @@
+# Binaries
+bin/
+*.exe
+*.syso
+/desktop
+/existora-desktop
+
+# Build artifacts
+build/
+cmd/desktop/frontend/dist/
+pkg/api/static/
+
+# Distribution
+dist/
+
+# SQLite state files
+*.db
+*.db-shm
+*.db-wal
+
+# Logs
+*.log
+
+# Environment
+.env
+
+# Dependencies
+vendor/
+node_modules/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Playwright MCP screenshots
+.playwright-mcp/
+
+# Claude Code
+.claude/

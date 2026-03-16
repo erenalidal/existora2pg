@@ -1,0 +1,66 @@
+# existora2pg configuration example
+
+oracle:
+  dsn: "oracle://user:pass@host:1521/service"
+  schema: "MY_SCHEMA"
+  max_conns: 8
+
+postgres:
+  dsn: "postgres://user:pass@host:5432/mydb?sslmode=disable"
+  schema: "public"
+  max_conns: 8
+  drop_target: false  # DROP IF EXISTS before CREATE
+  unlogged: false     # UNLOGGED tables for faster bulk load (skip WAL), converted to LOGGED after
+
+migration:
+  workers: 4                    # parallel table/partition workers
+  batch_size: 5000              # rows per COPY batch
+  state_db_path: "./migration_state.db"
+  resume: false                 # set true to resume last failed run
+  validate_after: true          # run validation after migration
+
+  include_tables:               # empty = all tables
+    - "CUSTOMER*"
+    - "ORDER*"
+    - "HOURLY_METER_DATA"
+
+  exclude_tables:
+    - "*_BACKUP"
+    - "*_TMP"
+
+  table_overrides:
+    HOURLY_METER_DATA:
+      # Option A: value-based auto-pruning (you don't need to know partition names!)
+      partition_range:
+        from: "2024-01-01"            # inclusive lower bound
+        to: "2024-06-01"              # exclusive upper bound (empty = no upper limit)
+      max_parallel: 4                 # max concurrent partition workers (0 = use global workers)
+      fetch_size: 10000               # per-table fetch size override
+
+      # Option B: explicit partition names (takes priority over partition_range)
+      # partition_filter:
+      #   - "P202401"
+      #   - "P202402"
+
+    ORDER_HISTORY:
+      target_name: "order_history_archive"
+
+    HUGE_AUDIT_LOG:
+      skip_indexes: true              # skip index creation (add manually later with CREATE INDEX CONCURRENTLY)
+      skip_constraints: true          # skip FK/UNIQUE/CHECK constraints
+      skip_validation: true           # skip COUNT(*) row validation
+      max_parallel: 2                 # limit parallelism to avoid overwhelming Oracle
+      fetch_size: 1000                # smaller fetch for memory efficiency
+      where: "created_at >= DATE '2024-01-01'"
+
+    # Non-partitioned 20B-row table — ROWID chunking for parallel reads
+    MASSIVE_TABLE:
+      chunk_size: 1000000             # split into ~1M-row ROWID chunks (auto-detects chunk count)
+      max_parallel: 8                 # max concurrent chunk workers
+      fetch_size: 20000               # larger fetch for high throughput
+      skip_validation: true           # COUNT(*) on 20B rows is slow
+
+logging:
+  level: "info"       # debug, info, warn, error
+  format: "text"      # text or json
+  file: ""            # empty = stdout

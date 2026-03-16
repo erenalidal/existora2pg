@@ -1,0 +1,252 @@
+name: Build & Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  GO_VERSION: '1.22'
+  NODE_VERSION: '20'
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install goversioninfo
+        run: go install github.com/josephspurrier/goversioninfo/cmd/goversioninfo@latest
+
+      - name: Install WebView2 Runtime
+        shell: powershell
+        run: |
+          $webview2 = Get-ItemProperty -Path "HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BEB-235B8DE50060}" -ErrorAction SilentlyContinue
+          if ($webview2) {
+            Write-Host "WebView2 Runtime found: $($webview2.pv)"
+          } else {
+            Write-Host "Installing WebView2 Runtime..."
+            Invoke-WebRequest -Uri "https://go.microsoft.com/fwlink/p/?LinkId=2124703" -OutFile "$env:TEMP\MicrosoftEdgeWebview2Setup.exe"
+            Start-Process -FilePath "$env:TEMP\MicrosoftEdgeWebview2Setup.exe" -Args "/silent /install" -Wait
+          }
+
+      - name: Download Oracle Instant Client (Windows x64)
+        shell: powershell
+        run: |
+          $url = "https://download.oracle.com/otn_software/nt/instantclient/2115000/instantclient-basiclite-windows.x64-21.15.0.0.0dbru.zip"
+          $sdkUrl = "https://download.oracle.com/otn_software/nt/instantclient/2115000/instantclient-sdk-windows.x64-21.15.0.0.0dbru.zip"
+
+          Write-Host "Downloading Oracle Instant Client Basic Light..."
+          Invoke-WebRequest -Uri $url -OutFile "$env:TEMP\ic-basic.zip"
+          Expand-Archive -Path "$env:TEMP\ic-basic.zip" -DestinationPath "$env:TEMP\oracle" -Force
+
+          Write-Host "Downloading Oracle Instant Client SDK..."
+          Invoke-WebRequest -Uri $sdkUrl -OutFile "$env:TEMP\ic-sdk.zip"
+          Expand-Archive -Path "$env:TEMP\ic-sdk.zip" -DestinationPath "$env:TEMP\oracle" -Force
+
+          $icDir = Get-ChildItem "$env:TEMP\oracle\instantclient_*" | Select-Object -First 1
+          Write-Host "Oracle IC directory: $($icDir.FullName)"
+
+          echo "OCI_LIB_DIR=$($icDir.FullName)" >> $env:GITHUB_ENV
+          echo "OCI_INC_DIR=$($icDir.FullName)\sdk\include" >> $env:GITHUB_ENV
+          echo "$($icDir.FullName)" >> $env:GITHUB_PATH
+
+      - name: Build frontend (server embed)
+        run: |
+          cd web/frontend
+          npm install
+          npm run build
+
+      - name: Build frontend (Wails embed)
+        run: |
+          cd web/frontend
+          $env:WAILS_BUILD = "1"
+          npm run build:wails
+
+      - name: Generate Windows version info
+        shell: powershell
+        run: |
+          # Update version in versioninfo.json from tag
+          $version = if ($env:GITHUB_REF_NAME -match '^v(\d+)\.(\d+)\.(\d+)') {
+            @{ Major = [int]$Matches[1]; Minor = [int]$Matches[2]; Patch = [int]$Matches[3] }
+          } else {
+            @{ Major = 0; Minor = 0; Patch = 0 }
+          }
+
+          # Desktop versioninfo
+          $vi = Get-Content cmd/desktop/versioninfo.json | ConvertFrom-Json
+          $vi.FixedFileInfo.FileVersion.Major = $version.Major
+          $vi.FixedFileInfo.FileVersion.Minor = $version.Minor
+          $vi.FixedFileInfo.FileVersion.Patch = $version.Patch
+          $vi.FixedFileInfo.ProductVersion.Major = $version.Major
+          $vi.FixedFileInfo.ProductVersion.Minor = $version.Minor
+          $vi.FixedFileInfo.ProductVersion.Patch = $version.Patch
+          $verStr = "$($version.Major).$($version.Minor).$($version.Patch).0"
+          $vi.StringFileInfo.FileVersion = $verStr
+          $vi.StringFileInfo.ProductVersion = $verStr
+          $vi | ConvertTo-Json -Depth 10 | Set-Content cmd/desktop/versioninfo.json
+
+          # CLI versioninfo
+          $viCli = Get-Content cmd/existora/versioninfo.json | ConvertFrom-Json
+          $viCli.FixedFileInfo.FileVersion.Major = $version.Major
+          $viCli.FixedFileInfo.FileVersion.Minor = $version.Minor
+          $viCli.FixedFileInfo.FileVersion.Patch = $version.Patch
+          $viCli.FixedFileInfo.ProductVersion.Major = $version.Major
+          $viCli.FixedFileInfo.ProductVersion.Minor = $version.Minor
+          $viCli.FixedFileInfo.ProductVersion.Patch = $version.Patch
+          $viCli.StringFileInfo.FileVersion = $verStr
+          $viCli.StringFileInfo.ProductVersion = $verStr
+          $viCli | ConvertTo-Json -Depth 10 | Set-Content cmd/existora/versioninfo.json
+
+          # Generate .syso files
+          cd cmd/desktop
+          goversioninfo -64 -o resource_windows_amd64.syso
+          cd ../existora
+          goversioninfo -64 -o resource_windows_amd64.syso
+
+      - name: Build desktop binary
+        env:
+          CGO_ENABLED: '1'
+        run: |
+          $version = if ($env:GITHUB_REF_NAME -match '^v') { $env:GITHUB_REF_NAME } else { "dev" }
+          $commit = git rev-parse --short HEAD
+          $buildDate = Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ"
+          $ldflags = "-X github.com/erenalidal/existora2pg/internal/cli.Version=$version -X github.com/erenalidal/existora2pg/internal/cli.Commit=$commit -X github.com/erenalidal/existora2pg/internal/cli.BuildDate=$buildDate -X main.appVersion=$version -H windowsgui"
+
+          go build -tags production -ldflags "$ldflags" -o bin/existora-desktop.exe ./cmd/desktop/
+
+      - name: Build CLI binary
+        env:
+          CGO_ENABLED: '1'
+        run: |
+          $version = if ($env:GITHUB_REF_NAME -match '^v') { $env:GITHUB_REF_NAME } else { "dev" }
+          $commit = git rev-parse --short HEAD
+          $buildDate = Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ"
+          $ldflags = "-X github.com/erenalidal/existora2pg/internal/cli.Version=$version -X github.com/erenalidal/existora2pg/internal/cli.Commit=$commit -X github.com/erenalidal/existora2pg/internal/cli.BuildDate=$buildDate"
+
+          go build -ldflags "$ldflags" -o bin/existora.exe ./cmd/existora/
+
+      - name: Package distribution
+        shell: powershell
+        run: |
+          $distDir = "dist/existora2pg-windows-amd64"
+          New-Item -ItemType Directory -Path $distDir -Force
+
+          Copy-Item "bin/existora-desktop.exe" "$distDir/"
+          Copy-Item "bin/existora.exe" "$distDir/"
+
+          # Oracle Instant Client DLLs
+          $icDir = Get-ChildItem "$env:TEMP\oracle\instantclient_*" | Select-Object -First 1
+          New-Item -ItemType Directory -Path "$distDir/lib/oracle" -Force
+          Copy-Item "$icDir\oci.dll" "$distDir/lib/oracle/"
+          Copy-Item "$icDir\oraociicus*.dll" "$distDir/lib/oracle/" -ErrorAction SilentlyContinue
+          Copy-Item "$icDir\orannz*.dll" "$distDir/lib/oracle/" -ErrorAction SilentlyContinue
+
+          Compress-Archive -Path "$distDir\*" -DestinationPath "dist/existora2pg-windows-amd64.zip" -Force
+          Write-Host "Package created: dist/existora2pg-windows-amd64.zip"
+          Get-ChildItem "$distDir" -Recurse | Format-Table Name, Length
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: existora2pg-windows-amd64
+          path: dist/existora2pg-windows-amd64.zip
+
+      - name: Upload to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/existora2pg-windows-amd64.zip
+          generate_release_notes: true
+
+  build-macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install Oracle Instant Client (macOS arm64)
+        run: |
+          brew install oracle-instantclient-basiclite oracle-instantclient-sdk 2>/dev/null || true
+          if [ ! -f /opt/homebrew/lib/libclntsh.dylib ]; then
+            echo "Oracle IC not found via brew, attempting manual setup..."
+          fi
+
+      - name: Build frontend (server embed)
+        run: |
+          cd web/frontend
+          npm install
+          npm run build
+
+      - name: Build frontend (Wails embed)
+        run: |
+          cd web/frontend
+          WAILS_BUILD=1 npm run build:wails
+
+      - name: Build desktop binary (arm64)
+        run: |
+          VERSION="${GITHUB_REF_NAME:-dev}"
+          COMMIT=$(git rev-parse --short HEAD)
+          BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          CGO_LDFLAGS="-framework UniformTypeIdentifiers -Wl,-rpath,/opt/homebrew/lib" \
+          go build -tags production \
+            -ldflags "-X github.com/erenalidal/existora2pg/internal/cli.Version=$VERSION \
+                      -X github.com/erenalidal/existora2pg/internal/cli.Commit=$COMMIT \
+                      -X github.com/erenalidal/existora2pg/internal/cli.BuildDate=$BUILD_DATE \
+                      -X main.appVersion=$VERSION" \
+            -o bin/existora-desktop-darwin-arm64 ./cmd/desktop/
+
+      - name: Build CLI binary (arm64)
+        run: |
+          VERSION="${GITHUB_REF_NAME:-dev}"
+          COMMIT=$(git rev-parse --short HEAD)
+          BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          go build \
+            -ldflags "-X github.com/erenalidal/existora2pg/internal/cli.Version=$VERSION \
+                      -X github.com/erenalidal/existora2pg/internal/cli.Commit=$COMMIT \
+                      -X github.com/erenalidal/existora2pg/internal/cli.BuildDate=$BUILD_DATE" \
+            -o bin/existora-darwin-arm64 ./cmd/existora/
+
+      - name: Package distribution
+        run: |
+          DIST=dist/existora2pg-darwin-arm64
+          mkdir -p "$DIST"
+          cp bin/existora-desktop-darwin-arm64 "$DIST/existora-desktop"
+          cp bin/existora-darwin-arm64 "$DIST/existora"
+          chmod +x "$DIST/existora-desktop" "$DIST/existora"
+          cd dist && tar czf existora2pg-darwin-arm64.tar.gz existora2pg-darwin-arm64/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: existora2pg-darwin-arm64
+          path: dist/existora2pg-darwin-arm64.tar.gz
+
+      - name: Upload to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/existora2pg-darwin-arm64.tar.gz
+          generate_release_notes: true

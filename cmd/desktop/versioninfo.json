@@ -1,0 +1,38 @@
+{
+  "FixedFileInfo": {
+    "FileVersion": {
+      "Major": 1,
+      "Minor": 0,
+      "Patch": 0,
+      "Build": 0
+    },
+    "ProductVersion": {
+      "Major": 1,
+      "Minor": 0,
+      "Patch": 0,
+      "Build": 0
+    },
+    "FileFlagsMask": "3f",
+    "FileFlags": "",
+    "FileOS": "040004",
+    "FileType": "01",
+    "FileSubType": "00"
+  },
+  "StringFileInfo": {
+    "Comments": "Oracle to PostgreSQL Migration Tool",
+    "CompanyName": "Existora",
+    "FileDescription": "Existora2PG — Oracle to PostgreSQL Migration",
+    "FileVersion": "1.0.0.0",
+    "InternalName": "existora2pg",
+    "LegalCopyright": "Copyright © 2024-2026 Existora. All rights reserved.",
+    "OriginalFilename": "existora-desktop.exe",
+    "ProductName": "Existora2PG",
+    "ProductVersion": "1.0.0.0"
+  },
+  "VarFileInfo": {
+    "Translation": {
+      "LangID": "0409",
+      "CharsetID": "04B0"
+    }
+  }
+}
