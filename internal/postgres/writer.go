@@ -305,7 +305,7 @@ type CopyDataOpts struct {
 }
 
 func (w *Writer) CopyData(ctx context.Context, t schema.Table, partition *schema.Partition,
-	rowCh <-chan oracle.ReadResult, batchSize int, progressFn func(rows int64), opts ...CopyDataOpts) (*CopyStats, error) {
+	rowCh <-chan oracle.ReadResult, batchSize int, progressFn func(rows int64, interim *CopyStats), opts ...CopyDataOpts) (*CopyStats, error) {
 
 	var maxBatchBytes int64
 	if len(opts) > 0 {
@@ -451,7 +451,15 @@ func (w *Writer) CopyData(ctx context.Context, t schema.Table, partition *schema
 				wr.batchCount++
 				wr.totalRows += n
 				if progressFn != nil {
-					progressFn(wr.totalRows)
+					interim := &CopyStats{
+						RowsCopied:    wr.totalRows,
+						WriteTime:     wr.writeTime,
+						CommitWait:    wr.commitWait,
+						BatchCount:    wr.batchCount,
+						AcquireWait:   acquireWait,
+						AvgBatchWrite: wr.writeTime / time.Duration(wr.batchCount),
+					}
+					progressFn(wr.totalRows, interim)
 				}
 				flushed = true
 				break

@@ -776,7 +776,7 @@ func (e *Engine) executeDataMigration(ctx context.Context, runID string, plan *M
 
 			copyStart := time.Now()
 			var lastProgressLog time.Time
-			progressFn := func(rows int64) {
+			progressFn := func(rows int64, interim *postgres.CopyStats) {
 				lastProgress.Store(time.Now())
 				// Throttle: log at most once per second to prevent SSE event flood.
 				// A 40M row table at 50K batch = 800 batches. Without throttle,
@@ -799,12 +799,22 @@ func (e *Engine) executeDataMigration(ctx context.Context, runID string, plan *M
 				if elapsed > 0 {
 					speed = int64(float64(rows) / elapsed)
 				}
-				e.logger.Info("progress",
+				args := []any{
 					"table", task.Table.Name,
 					"partition", pn,
 					"rows", rows,
 					"rows_per_sec", speed,
-					"percent", pct)
+					"percent", pct,
+				}
+				if interim != nil {
+					args = append(args,
+						"batches", interim.BatchCount,
+						"avg_batch_write", interim.AvgBatchWrite.Round(time.Millisecond),
+						"acquire_wait", interim.AcquireWait.Round(time.Millisecond),
+						"commit_wait", interim.CommitWait.Round(time.Millisecond),
+					)
+				}
+				e.logger.Info("progress", args...)
 			}
 
 			// Read from Oracle — choose strategy
