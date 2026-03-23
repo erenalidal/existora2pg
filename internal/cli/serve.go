@@ -11,6 +11,7 @@ import (
 
 var (
 	servePort    int
+	serveBind    string
 	serveCORS    string
 	serveStateDB string
 )
@@ -32,9 +33,11 @@ func newServeCmd() *cobra.Command {
 
 			srv, err := api.NewServer(api.ServerConfig{
 				Port:        servePort,
+				BindAddress: serveBind,
 				StateDBPath: stateDB,
 				CORSOrigins: serveCORS,
 				Logger:      l,
+				Version:     Version,
 			})
 			if err != nil {
 				return fmt.Errorf("init server: %w", err)
@@ -49,6 +52,7 @@ func newServeCmd() *cobra.Command {
 	}
 
 	cmd.Flags().IntVar(&servePort, "port", 9740, "HTTP server port")
+	cmd.Flags().StringVar(&serveBind, "bind", "127.0.0.1", "Bind address (use 0.0.0.0 for all interfaces)")
 	cmd.Flags().StringVar(&serveCORS, "cors", "http://localhost:5173", "CORS allowed origins (comma separated)")
 	cmd.Flags().StringVar(&serveStateDB, "state-db", "./existora2pg_state.db", "SQLite state database path")
 

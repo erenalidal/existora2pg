@@ -251,3 +251,88 @@ jobs:
         with:
           files: dist/existora2pg-darwin-arm64.tar.gz
           generate_release_notes: true
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install Oracle Instant Client (Linux x64)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libaio1 unzip
+          curl -sL "https://download.oracle.com/otn_software/linux/instantclient/2115000/instantclient-basiclite-linux.x64-21.15.0.0.0dbru.zip" -o /tmp/ic-basic.zip
+          curl -sL "https://download.oracle.com/otn_software/linux/instantclient/2115000/instantclient-sdk-linux.x64-21.15.0.0.0dbru.zip" -o /tmp/ic-sdk.zip
+          sudo mkdir -p /opt/oracle
+          sudo unzip -qo /tmp/ic-basic.zip -d /opt/oracle
+          sudo unzip -qo /tmp/ic-sdk.zip -d /opt/oracle
+          IC_DIR=$(ls -d /opt/oracle/instantclient_* | head -1)
+          echo "LD_LIBRARY_PATH=$IC_DIR" >> $GITHUB_ENV
+          echo "OCI_LIB_DIR=$IC_DIR" >> $GITHUB_ENV
+          echo "OCI_INC_DIR=$IC_DIR/sdk/include" >> $GITHUB_ENV
+          echo "$IC_DIR" >> $GITHUB_PATH
+          sudo sh -c "echo $IC_DIR > /etc/ld.so.conf.d/oracle.conf"
+          sudo ldconfig
+
+      - name: Build frontend (server embed)
+        run: |
+          cd web/frontend
+          npm install
+          npm run build
+
+      - name: Build frontend (Wails embed — placeholder)
+        run: |
+          mkdir -p cmd/desktop/frontend/dist
+          echo '<!DOCTYPE html><html><body>placeholder</body></html>' > cmd/desktop/frontend/dist/index.html
+
+      - name: Build CLI binary
+        env:
+          CGO_ENABLED: '1'
+        run: |
+          VERSION="${GITHUB_REF_NAME:-dev}"
+          COMMIT=$(git rev-parse --short HEAD)
+          BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          go build \
+            -ldflags "-X github.com/erenalidal/existora2pg/internal/cli.Version=$VERSION \
+                      -X github.com/erenalidal/existora2pg/internal/cli.Commit=$COMMIT \
+                      -X github.com/erenalidal/existora2pg/internal/cli.BuildDate=$BUILD_DATE" \
+            -o bin/existora ./cmd/existora/
+
+      - name: Package distribution
+        run: |
+          DIST=dist/existora2pg-linux-amd64
+          mkdir -p "$DIST/lib/oracle"
+          cp bin/existora "$DIST/"
+          chmod +x "$DIST/existora"
+          IC_DIR=$(ls -d /opt/oracle/instantclient_* | head -1)
+          cp "$IC_DIR"/libclntsh.so* "$DIST/lib/oracle/" 2>/dev/null || true
+          cp "$IC_DIR"/libclntshcore.so* "$DIST/lib/oracle/" 2>/dev/null || true
+          cp "$IC_DIR"/libnnz*.so* "$DIST/lib/oracle/" 2>/dev/null || true
+          cp "$IC_DIR"/libociicus.so "$DIST/lib/oracle/" 2>/dev/null || true
+          cp "$IC_DIR"/libocci.so* "$DIST/lib/oracle/" 2>/dev/null || true
+          cp "$IC_DIR"/libmql1.so "$DIST/lib/oracle/" 2>/dev/null || true
+          cp "$IC_DIR"/libipc1.so "$DIST/lib/oracle/" 2>/dev/null || true
+          cd dist && tar czf existora2pg-linux-amd64.tar.gz existora2pg-linux-amd64/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: existora2pg-linux-amd64
+          path: dist/existora2pg-linux-amd64.tar.gz
+
+      - name: Upload to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/existora2pg-linux-amd64.tar.gz
+          generate_release_notes: true

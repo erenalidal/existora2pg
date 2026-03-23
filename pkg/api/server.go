@@ -25,6 +25,8 @@ var staticFS embed.FS
 type ServerConfig struct {
 	// Port to listen on (default 9740).
 	Port int
+	// BindAddress is the address to bind to (default "127.0.0.1", use "0.0.0.0" for all interfaces).
+	BindAddress string
 	// StateDBPath is the path to the SQLite state database.
 	StateDBPath string
 	// CORSOrigins is a comma-separated list of allowed origins for development (e.g., "http://localhost:3000").
@@ -57,6 +59,9 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	}
 	if cfg.Logger == nil {
 		cfg.Logger = slog.Default()
+	}
+	if cfg.BindAddress == "" {
+		cfg.BindAddress = "127.0.0.1"
 	}
 
 	// Open the shared SQLite database (same one used by jobstore)
@@ -185,7 +190,7 @@ func (s *Server) buildRouter(corsOrigins string) chi.Router {
 // ListenAndServe starts the HTTP server on localhost only.
 // Binds to 127.0.0.1 to prevent external network access.
 func (s *Server) ListenAndServe() error {
-	addr := fmt.Sprintf("127.0.0.1:%d", s.config.Port)
+	addr := fmt.Sprintf("%s:%d", s.config.BindAddress, s.config.Port)
 	s.logger.Info("starting API server", "addr", addr)
 	return http.ListenAndServe(addr, s.router)
 }
