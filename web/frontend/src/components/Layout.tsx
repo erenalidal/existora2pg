@@ -1,7 +1,7 @@
 import { NavLink, Outlet, useParams, useLocation } from 'react-router-dom';
 import { Database, FolderOpen, Play, CheckCircle, Code, LayoutDashboard, ListChecks, Eye, Lightbulb, Download, Upload, X } from 'lucide-react';
 import { useEffect, useState, useRef } from 'react';
-import { updates, UpdateInfo } from '../api';
+import { health, updates, UpdateInfo } from '../api';
 
 export function Layout() {
   const { id } = useParams();
@@ -12,8 +12,10 @@ export function Layout() {
   const [updateMsg, setUpdateMsg] = useState('');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [appVersion, setAppVersion] = useState('');
 
   useEffect(() => {
+    health.get().then(h => setAppVersion(h.version)).catch(() => {});
     updates.check().then(info => {
       if (info.available) setUpdateInfo(info);
     }).catch(() => {});
@@ -56,6 +58,7 @@ export function Layout() {
         <div className="sidebar-logo">
           <h1>existora2pg</h1>
           <span>Oracle → PostgreSQL</span>
+          {appVersion && <span style={{ fontSize: 10, color: 'var(--text-muted, #666)', marginTop: 2 }}>{appVersion}</span>}
         </div>
         <nav className="sidebar-nav">
           <NavLink to="/projects" end>

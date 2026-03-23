@@ -396,6 +396,10 @@ export interface UpdateInfo {
   asset_size?: number;
 }
 
+export const health = {
+  get: () => request<{ status: string; version: string }>('/health'),
+};
+
 export const updates = {
   check: (): Promise<UpdateInfo> => request('/update/check'),
   apply: (downloadUrl: string): Promise<{ status: string; message: string }> =>
